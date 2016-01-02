@@ -5,6 +5,7 @@ import java.util.Date;
 import java.util.TimeZone;
 
 public class Message {
+    private String timestamp;
     private String content;
     private String receiver;
     private String sender;
@@ -17,6 +18,8 @@ public class Message {
         return this.content;
     }
     public String getCommand() { return this.command; }
+    public String getTimestamp() { return this.timestamp; }
+    public String getSender() { return this.sender;}
 
     public void setSender(String sender) {
         this.sender = sender;
@@ -34,19 +37,19 @@ public class Message {
         this.command = command;
     }
 
-    private static String BuildCurrentTime() {
+    private static String buildCurrentTime() {
         TimeZone.setDefault(TimeZone.getTimeZone("GMT+1"));
         SimpleDateFormat dateFormat = new SimpleDateFormat("HH:mm:ss");
         Date date = new Date();
 
-        return "[" + dateFormat.format(date) + "] ";
+        return dateFormat.format(date);
     }
 
-    public void FormatPingReply() {
-        this.content = BuildCurrentTime() + "Server says: " + content + "\n";
+    public void formatPingReply() {
+        this.content = buildCurrentTime() + "Server says: " + content;
     }
 
-    public void FormatMessage() {
-        this.content = BuildCurrentTime() + sender + " says: " + content + "\n";
+    public void formatReply() {
+        this.timestamp = buildCurrentTime();
     }
 }

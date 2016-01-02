@@ -84,7 +84,7 @@ public final class WebConnector {
         return processRequest(getRequest);
     }
 
-    public static UserInformation TryAuthorizeUser(String userJsonData) {
+    public static UserInformation tryAuthorizeUser(String userJsonData) {
         Gson gson = new Gson();
         String jsonString;
         BaseResponse responseModel = null;
@@ -99,7 +99,7 @@ public final class WebConnector {
         return null;
     }
 
-    public static ArrayList<UserInformation> GetClientContacts(int clientId) {
+    public static ArrayList<UserInformation> getClientContacts(int clientId) {
         Gson gson = new Gson();
         String jsonString;
         ContactsInformation responseModel = null;

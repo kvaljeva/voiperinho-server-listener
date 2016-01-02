@@ -12,7 +12,7 @@ import java.util.ArrayList;
 
 public class ServerSocketListener extends Thread {
     private final static int portNumber = 9999;
-    private UserInformation clientUser = null;
+    private UserInformation client = null;
     private Socket clientSocket = null;
     private InputStream inputStream = null;
     private OutputStream outputStream = null;
@@ -20,11 +20,14 @@ public class ServerSocketListener extends Thread {
     private Thread authorizationThread = null;
     private Thread notificationThread = null;
 
-    public enum MessageType {
+    // Listener for all of the incoming calls
+    private UdpListener udpListener;
+
+    private enum MessageType {
         Message, Ping, Request
     }
 
-    public enum ClientState {
+    private enum ClientState {
         NotAuthorized, Authorized
     }
     private ClientState isAuthorized;
@@ -36,7 +39,7 @@ public class ServerSocketListener extends Thread {
         this.isAuthorized = ClientState.NotAuthorized;
 
         try {
-            this.OpenStream();
+            this.openStream();
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -45,25 +48,25 @@ public class ServerSocketListener extends Thread {
     public void run() {
         switch (this.isAuthorized) {
             case NotAuthorized:
-                Authorize();
+                authorize();
                 break;
             case Authorized:
-                GetResponse();
+                getResponse();
                 break;
         }
     }
 
-    private void StartServer() { this.clientThread.start(); }
+    private void startServer() { this.clientThread.start(); }
 
-    private void AskForAuthorization() { this.authorizationThread.run(); }
+    private void askForAuthorization() { this.authorizationThread.run(); }
 
-    private void NotifyConnectedClients(boolean clientDisconnected) {
-        this.notificationThread = new Thread(() -> Notify(clientDisconnected));
+    private void notifyConnectedClients(boolean clientDisconnected) {
+        this.notificationThread = new Thread(() -> notify(clientDisconnected));
         this.notificationThread.start();
     }
 
-    private void Notify(boolean isDisconnectNotification) {
-        ArrayList<UserInformation> contacts = WebConnector.GetClientContacts(this.clientUser.getId());
+    private void notify(boolean isDisconnectNotification) {
+        ArrayList<UserInformation> contacts = WebConnector.getClientContacts(this.client.getId());
         String command;
 
         if (isDisconnectNotification) command = "/offline";
@@ -79,14 +82,14 @@ public class ServerSocketListener extends Thread {
                 String jsonMessage;
                 PrintWriter writer = new PrintWriter(availableClient.getOutputStream(), true);
 
-                Message message = new Message(clientUser.getUsername(), availableClient.getUsername(), command);
+                Message message = new Message(client.getUsername(), availableClient.getUsername(), command);
                 jsonMessage = gson.toJson(message);
                 writer.println(jsonMessage + "\n");
 
                 if (!isDisconnectNotification) {
-                    writer = new PrintWriter(clientUser.getOutputStream(), true);
+                    writer = new PrintWriter(client.getOutputStream(), true);
                     message.setContent(availableClient.getUsername());
-                    message.setReceiver(clientUser.getUsername());
+                    message.setReceiver(client.getUsername());
 
                     jsonMessage = gson.toJson(message);
                     writer.println(jsonMessage + "\n");
@@ -101,7 +104,7 @@ public class ServerSocketListener extends Thread {
         }
     }
 
-    private void Authorize() {
+    private void authorize() {
         boolean closeConnection = false;
 
         while (this.clientSocket.isConnected()) {
@@ -120,22 +123,22 @@ public class ServerSocketListener extends Thread {
                     Gson gson = new Gson();
                     System.out.println("Authorization message: " + message);
 
-                    clientUser = WebConnector.TryAuthorizeUser(message);
+                    client = WebConnector.tryAuthorizeUser(message);
 
-                    if (clientUser != null) {
+                    if (client != null) {
 
-                        clientUser.setIP(clientSocket.getInetAddress().toString());
-                        clientUser.setPort(clientSocket.getPort());
-                        clientUser.setOutputStream(this.outputStream);
+                        client.setIP(clientSocket.getInetAddress().toString());
+                        client.setPort(clientSocket.getPort());
+                        client.setOutputStream(this.outputStream);
 
                         // Send the account information back to the client
-                        BaseResponse response = new BaseResponse(200, clientUser, "");
+                        BaseResponse response = new BaseResponse(200, client, "");
                         writer.println(gson.toJson(response));
 
                         // Push clients to the list of currently available clients
                         // Used to determine whether the client is online when a different client performs a check
-                        AvailableClients.storeClient(clientUser);
-                        this.NotifyConnectedClients(false);
+                        AvailableClients.storeClient(client);
+                        this.notifyConnectedClients(false);
                         break;
                     }
                     else {
@@ -149,7 +152,7 @@ public class ServerSocketListener extends Thread {
             } finally {
                 if (closeConnection) {
                     try {
-                        this.CloseConnection();
+                        this.closeConnection();
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
@@ -159,21 +162,21 @@ public class ServerSocketListener extends Thread {
             if (closeConnection) break;
         }
 
-        if (clientUser != null) this.isAuthorized = ClientState.Authorized;
+        if (client != null) this.isAuthorized = ClientState.Authorized;
     }
 
-    private void SendThroughPipe(Message message, MessageType msgType) {
+    private void sendThroughPipe(Message message, MessageType msgType) {
         Gson gson = new Gson();
         PrintWriter writer = new PrintWriter(outputStream, true);
         String username;
         String jsonMessage;
 
-        if (msgType == MessageType.Ping) message.FormatPingReply();
-        else if (msgType == MessageType.Message) message.FormatMessage();
+        if (msgType == MessageType.Ping) message.formatPingReply();
+        else message.formatReply();
 
         jsonMessage = gson.toJson(message);
 
-        // In case that we have received a request from another client, skip sending it back to himself
+        // In case that we have received a request from another client, skip sending it back to ourselves
         if (msgType != MessageType.Request) {
             writer.println(jsonMessage);
         }
@@ -188,7 +191,7 @@ public class ServerSocketListener extends Thread {
         }
     }
 
-    private void GetResponse() {
+    private void getResponse() {
         boolean closeConnection = false;
 
         while (this.clientSocket.isConnected()) {
@@ -206,27 +209,52 @@ public class ServerSocketListener extends Thread {
                 if (!content.equals("")) {
                     Gson gson = new Gson();
                     Message message = gson.fromJson(content, Message.class);
-                    message.setSender(clientUser.getUsername());
+                    message.setSender(client.getUsername());
 
-                    if (message.getCommand().contains("/disconnect")) closeConnection = true;
-                    else if (message.getCommand().contains("/ping")) {
-                        Message serverMessage = new Message("pong!", this.clientUser.getUsername(), "/ping");
-                        SendThroughPipe(serverMessage, MessageType.Ping);
+                    if (message.getCommand().equals("/disconnect")) closeConnection = true;
+                    else if (message.getCommand().equals("/ping")) {
+                        Message serverMessage = new Message("pong!", this.client.getUsername(), "/ping");
+                        sendThroughPipe(serverMessage, MessageType.Ping);
                     }
-                    else if (message.getCommand().contains("/request")) {
+                    else if (message.getCommand().equals("/request")) {
                         Message requestMessage = new Message(message.getContent(), message.getReceiver(), "/request");
-                        SendThroughPipe(requestMessage, MessageType.Request);
+                        sendThroughPipe(requestMessage, MessageType.Request);
                     }
                     else if (message.getCommand().equals("/accept")) {
                         Message acceptRequestMessage = new Message(message.getContent(), message.getReceiver(), "/accept");
-                        SendThroughPipe(acceptRequestMessage, MessageType.Request);
+                        sendThroughPipe(acceptRequestMessage, MessageType.Request);
                     }
                     else if (message.getCommand().equals("/online")) {
                         Message onlineMsg = new Message(message.getContent(), message.getReceiver(), "/online");
-                        SendThroughPipe(onlineMsg, MessageType.Request);
+                        sendThroughPipe(onlineMsg, MessageType.Request);
+                    }
+                    else if (message.getCommand().contains("/call")) {
+                        if (message.getCommand().contains("/close")) {
+                            if (this.udpListener != null) {
+                                this.udpListener.close();
+                            }
+
+                            Message closeCallMsg = new Message("", message.getReceiver(), "/call/close");
+                            sendThroughPipe(closeCallMsg, MessageType.Request);
+                        }
+                        else if (message.getCommand().contains("/accept")) {
+                            UserInformation receiver = AvailableClients.getClientInfo(message.getReceiver());
+
+                            this.udpListener = new UdpListener(portNumber, receiver);
+                            this.udpListener.startListening();
+
+                            Message acceptCallMsg = new Message("", message.getReceiver(), "/call/accept");
+                            sendThroughPipe(acceptCallMsg, MessageType.Request);
+                        }
+                        else if (message.getCommand().equals("/call"))
+                        {
+                            Message initCallMsg = new Message("", message.getReceiver(), "/call");
+                            initCallMsg.setSender(client.getUsername());
+                            sendThroughPipe(initCallMsg, MessageType.Request);
+                        }
                     }
                     else {
-                        SendThroughPipe(message, MessageType.Message);
+                        sendThroughPipe(message, MessageType.Message);
                     }
                 }
             } catch (IOException e) {
@@ -236,7 +264,7 @@ public class ServerSocketListener extends Thread {
                 if (closeConnection) {
                     System.out.println("Closing connection with socket: " + clientSocket.getInetAddress() + ":" + clientSocket.getPort());
                     try {
-                        this.CloseConnection();
+                        this.closeConnection();
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
@@ -247,36 +275,41 @@ public class ServerSocketListener extends Thread {
         }
     }
 
-    private void OpenStream() throws IOException {
+    private void openStream() throws IOException {
         this.inputStream = this.clientSocket.getInputStream();
         this.outputStream = this.clientSocket.getOutputStream();
     }
 
-    private void CloseConnection() throws IOException {
+    private void closeConnection() throws IOException {
         Gson gson = new Gson();
         PrintWriter writer = new PrintWriter(outputStream, true);
 
         // If there's client, it means that he didn't authorize, therefore no need for a graceful disconnect
         // As well as no need to communicate with the other connected clients
-        if (this.clientUser != null) {
-            Message message = new Message("OK", this.clientUser.getUsername(), "/disconnect");
+        if (this.client != null) {
+            Message message = new Message("OK", this.client.getUsername(), "/disconnect");
             String jsonMessage = gson.toJson(message);
             writer.println(jsonMessage);
 
-            this.NotifyConnectedClients(true);
-            AvailableClients.removeClient(this.clientUser);
+            this.notifyConnectedClients(true);
+            AvailableClients.removeClient(this.client);
         }
 
         if (this.clientSocket != null) this.clientSocket.close();
         if (this.outputStream != null) this.outputStream.close();
         if (this.inputStream != null) this.inputStream.close();
 
+        // If there is an open connection existing while we disconnect, we need that stopped
+        if (this.udpListener != null) {
+            if (this.udpListener.isConnectionOpen()) this.udpListener.close();
+        }
+
         System.out.println("Connection was successfully closed.");
     }
 
     public static void main(String[] args) throws IOException {
         ServerSocket serverSocket = new ServerSocket(portNumber);
-        System.out.println("Server has been successfully started. Listening at port: " + serverSocket.getLocalPort());
+        System.out.println("Server has been successfully started.\nListening for connection at port: " + serverSocket.getLocalPort());
 
         while (true) {
             Socket client = serverSocket.accept();
@@ -284,12 +317,12 @@ public class ServerSocketListener extends Thread {
             ServerSocketListener listener = new ServerSocketListener(client);
 
             try {
-                listener.AskForAuthorization();
+                listener.askForAuthorization();
 
                 // If no connection was established, just skip to the loop head again and await for connection
-                if (!listener.clientSocket.isConnected() || listener.clientUser == null) continue;
+                if (!listener.clientSocket.isConnected() || listener.client == null) continue;
 
-                listener.StartServer();
+                listener.startServer();
             } catch (Exception e) {
                 e.printStackTrace();
                 break;
