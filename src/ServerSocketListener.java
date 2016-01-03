@@ -1,4 +1,6 @@
 import com.google.gson.Gson;
+import xyz.thedevspot.helpers.CallManager;
+import xyz.thedevspot.helpers.ClientsManager;
 import xyz.thedevspot.models.BaseResponse;
 import xyz.thedevspot.models.Message;
 import xyz.thedevspot.models.UserInformation;
@@ -75,7 +77,7 @@ public class ServerSocketListener extends Thread {
         if (contacts == null) return;
 
         for (UserInformation contact: contacts) {
-            UserInformation availableClient = AvailableClients.getClientInfo(contact.getUsername());
+            UserInformation availableClient = ClientsManager.getClientInfo(contact.getUsername());
 
             if (availableClient != null) {
                 Gson gson = new Gson();
@@ -137,7 +139,7 @@ public class ServerSocketListener extends Thread {
 
                         // Push clients to the list of currently available clients
                         // Used to determine whether the client is online when a different client performs a check
-                        AvailableClients.storeClient(client);
+                        ClientsManager.storeClient(client);
                         this.notifyConnectedClients(false);
                         break;
                     }
@@ -182,7 +184,7 @@ public class ServerSocketListener extends Thread {
         }
 
         username = message.getReceiver();
-        UserInformation receiver = AvailableClients.getClientInfo(username);
+        UserInformation receiver = ClientsManager.getClientInfo(username);
 
         // Send all messages besides ping to the receiver - ping is associated only with the sender
         if (receiver != null && msgType != MessageType.Ping) {
@@ -230,18 +232,26 @@ public class ServerSocketListener extends Thread {
                     }
                     else if (message.getCommand().contains("/call")) {
                         if (message.getCommand().contains("/close")) {
-                            if (this.udpListener != null) {
-                                this.udpListener.close();
+                            if (message.getContent() != null) {
+                                UdpListener callListener = CallManager.getCallInfo(message.getContent());
+
+                                if (callListener != null) {
+                                    callListener.close();
+                                    CallManager.clearCallInfo(message.getContent());
+                                }
                             }
 
                             Message closeCallMsg = new Message("", message.getReceiver(), "/call/close");
                             sendThroughPipe(closeCallMsg, MessageType.Request);
                         }
                         else if (message.getCommand().contains("/accept")) {
-                            UserInformation receiver = AvailableClients.getClientInfo(message.getReceiver());
+                            UserInformation receiver = ClientsManager.getClientInfo(message.getReceiver());
 
                             this.udpListener = new UdpListener(portNumber, receiver);
                             this.udpListener.startListening();
+
+                            // Store information about the connection into the xyz.thedevspot.helpers.CallManager class in order to retrieve the appropriate thread later on
+                            CallManager.storeCallInfo(message.getContent(), this.udpListener);
 
                             Message acceptCallMsg = new Message("", message.getReceiver(), "/call/accept");
                             sendThroughPipe(acceptCallMsg, MessageType.Request);
@@ -292,7 +302,7 @@ public class ServerSocketListener extends Thread {
             writer.println(jsonMessage);
 
             this.notifyConnectedClients(true);
-            AvailableClients.removeClient(this.client);
+            ClientsManager.removeClient(this.client);
         }
 
         if (this.clientSocket != null) this.clientSocket.close();

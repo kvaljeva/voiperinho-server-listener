@@ -11,8 +11,9 @@ public class UdpListener extends Thread{
 
     public UdpListener(int portNumber, UserInformation receiver) {
         try {
-            this.udpSocket = new DatagramSocket(portNumber);
+            this.udpSocket = new DatagramSocket(null);
             this.udpSocket.setReuseAddress(true);
+            this.udpSocket.bind(new InetSocketAddress(portNumber));
 
             this.receiver = receiver;
             this.isSocketOpen = true;
@@ -36,17 +37,22 @@ public class UdpListener extends Thread{
 
     private void processUdpPackage() {
         try {
-            byte[] buffer = new byte[1024];
+            byte[] buffer = new byte[4096];
             DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
 
-            while (true) {
+            while (this.isSocketOpen) {
 
                 try {
+                    if (!this.isSocketOpen) break;
+
                     this.udpSocket.receive(packet);
                     byte[] responseData = packet.getData();
                     InetAddress ipAddress = null;
 
-                    if (responseData == null) continue;
+                    if (responseData == null) {
+                        this.isSocketOpen = false;
+                        break;
+                    }
 
                     System.out.println("UDP packet received at: " + System.currentTimeMillis());
 
@@ -60,19 +66,28 @@ public class UdpListener extends Thread{
                         DatagramPacket response = new DatagramPacket(responseData, responseData.length, ipAddress , receiver.getPort());
                         this.udpSocket.send(response);
                     }
+
+                    if (!this.isSocketOpen) break;
                 } catch (IOException e) {
                     e.printStackTrace();
+
+                    this.isSocketOpen = false;
                     break;
                 }
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
+        finally {
+            if (this.udpSocket != null) {
+                this.udpSocket.close();
+            }
+        }
     }
 
     public void close() {
+        this.isSocketOpen = false;
         this.udpSocket.disconnect();
-        this.udpSocket.close();
     }
 
     public boolean isConnectionOpen() {

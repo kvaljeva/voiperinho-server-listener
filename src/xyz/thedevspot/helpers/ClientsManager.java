@@ -1,10 +1,12 @@
+package xyz.thedevspot.helpers;
+
 import xyz.thedevspot.models.UserInformation;
 import java.util.HashMap;
 
-public class AvailableClients {
+public class ClientsManager {
     private static HashMap<String, UserInformation> clientMap = new HashMap<>();
 
-    private AvailableClients() { }
+    private ClientsManager() { }
 
     public static HashMap<String, UserInformation> getAvailableClients() {
         return clientMap;
