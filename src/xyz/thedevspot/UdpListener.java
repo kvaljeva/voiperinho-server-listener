@@ -83,13 +83,13 @@ public class UdpListener extends Thread{
         finally {
             if (this.udpSocket != null) {
                 this.udpSocket.close();
+                this.udpSocket = null;
             }
         }
     }
 
     public void close() {
         this.isSocketOpen = false;
-        this.udpSocket.disconnect();
     }
 
     public boolean isConnectionOpen() {

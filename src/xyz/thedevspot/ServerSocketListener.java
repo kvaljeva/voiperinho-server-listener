@@ -244,25 +244,43 @@ public class ServerSocketListener extends Thread {
                             }
 
                             Message closeCallMsg = new Message("", message.getReceiver(), "/call/close");
+                            closeCallMsg.setSender(this.client.getUsername());
                             sendThroughPipe(closeCallMsg, MessageType.Request);
                         }
                         else if (message.getCommand().contains("/accept")) {
                             UserInformation receiver = ClientsManager.getClientInfo(message.getReceiver());
 
-                            this.udpListener = new UdpListener(portNumber, receiver);
-                            this.udpListener.startListening();
+                            if (receiver != null) {
+                                this.udpListener = new UdpListener(portNumber, receiver);
+                                this.udpListener.startListening();
 
-                            // Store information about the connection into the xyz.thedevspot.helpers.CallManager class in order to retrieve the appropriate thread later on
-                            CallManager.storeCallInfo(message.getContent(), this.udpListener);
+                                // Store information about the connection into the CallManager class in order to retrieve the appropriate thread later on
+                                CallManager.storeCallInfo(message.getContent(), this.udpListener);
 
-                            Message acceptCallMsg = new Message("", message.getReceiver(), "/call/accept");
-                            sendThroughPipe(acceptCallMsg, MessageType.Request);
+                                Message acceptCallMsg = new Message(message.getContent(), message.getReceiver(), "/call/accept");
+                                acceptCallMsg.setSender(this.client.getUsername());
+                                sendThroughPipe(acceptCallMsg, MessageType.Request);
+                            }
+                            else {
+                                Message closeCallMsg = new Message("", message.getSender(), "/call/close");
+                                closeCallMsg.setSender(this.client.getUsername());
+                                sendThroughPipe(closeCallMsg, MessageType.Request);
+                            }
                         }
                         else if (message.getCommand().equals("/call"))
                         {
-                            Message initCallMsg = new Message("", message.getReceiver(), "/call");
-                            initCallMsg.setSender(client.getUsername());
-                            sendThroughPipe(initCallMsg, MessageType.Request);
+                            UserInformation receiver = ClientsManager.getClientInfo(message.getReceiver());
+
+                            if (receiver != null) {
+                                Message initCallMsg = new Message("", message.getReceiver(), "/call");
+                                initCallMsg.setSender(client.getUsername());
+                                sendThroughPipe(initCallMsg, MessageType.Request);
+                            }
+                            else {
+                                Message closeCallMsg = new Message("", message.getSender(), "/call/close");
+                                closeCallMsg.setSender(message.getReceiver());
+                                sendThroughPipe(closeCallMsg, MessageType.Request);
+                            }
                         }
                     }
                     else {

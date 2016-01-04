@@ -46,7 +46,7 @@ public final class WebConnector {
             if (response != null) {
                 HttpEntity entity = response.getEntity();
 
-                if (entity != null) return EntityUtils.toString(entity, "UTF-8");;
+                if (entity != null) return EntityUtils.toString(entity, "UTF-8");
             }
         } catch (IOException e) {
             e.printStackTrace();
