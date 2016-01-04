@@ -1,3 +1,5 @@
+package xyz.thedevspot;
+
 import com.google.gson.Gson;
 import xyz.thedevspot.helpers.CallManager;
 import xyz.thedevspot.helpers.ClientsManager;

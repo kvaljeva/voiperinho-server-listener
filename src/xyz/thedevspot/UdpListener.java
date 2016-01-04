@@ -1,3 +1,5 @@
+package xyz.thedevspot;
+
 import xyz.thedevspot.models.UserInformation;
 
 import java.io.IOException;
