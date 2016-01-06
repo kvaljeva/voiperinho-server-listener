@@ -24,9 +24,6 @@ public class ServerSocketListener extends Thread {
     private Thread authorizationThread = null;
     private Thread notificationThread = null;
 
-    // Listener for all of the incoming calls
-    private UdpListener udpListener;
-
     private enum MessageType {
         Message, Ping, Request
     }
@@ -131,8 +128,8 @@ public class ServerSocketListener extends Thread {
 
                     if (client != null) {
 
-                        client.setIP(clientSocket.getInetAddress().toString());
-                        client.setPort(clientSocket.getPort());
+                        client.setIP(clientSocket.getInetAddress());
+                        client.setTcpPort(clientSocket.getPort());
                         client.setOutputStream(this.outputStream);
 
                         // Send the account information back to the client
@@ -215,7 +212,9 @@ public class ServerSocketListener extends Thread {
                     Message message = gson.fromJson(content, Message.class);
                     message.setSender(client.getUsername());
 
-                    if (message.getCommand().equals("/disconnect")) closeConnection = true;
+                    if (message.getCommand().equals("/disconnect")) {
+                        closeConnection = true;
+                    }
                     else if (message.getCommand().equals("/ping")) {
                         Message serverMessage = new Message("pong!", this.client.getUsername(), "/ping");
                         sendThroughPipe(serverMessage, MessageType.Ping);
@@ -251,12 +250,6 @@ public class ServerSocketListener extends Thread {
                             UserInformation receiver = ClientsManager.getClientInfo(message.getReceiver());
 
                             if (receiver != null) {
-                                this.udpListener = new UdpListener(portNumber, receiver);
-                                this.udpListener.startListening();
-
-                                // Store information about the connection into the CallManager class in order to retrieve the appropriate thread later on
-                                CallManager.storeCallInfo(message.getContent(), this.udpListener);
-
                                 Message acceptCallMsg = new Message(message.getContent(), message.getReceiver(), "/call/accept");
                                 acceptCallMsg.setSender(this.client.getUsername());
                                 sendThroughPipe(acceptCallMsg, MessageType.Request);
@@ -267,11 +260,13 @@ public class ServerSocketListener extends Thread {
                                 sendThroughPipe(closeCallMsg, MessageType.Request);
                             }
                         }
-                        else if (message.getCommand().equals("/call"))
-                        {
+                        else if (message.getCommand().equals("/call")) {
                             UserInformation receiver = ClientsManager.getClientInfo(message.getReceiver());
 
                             if (receiver != null) {
+                                UdpListener udpListener = new UdpListener(portNumber, receiver, this.client);
+                                udpListener.startListening();
+
                                 Message initCallMsg = new Message("", message.getReceiver(), "/call");
                                 initCallMsg.setSender(client.getUsername());
                                 sendThroughPipe(initCallMsg, MessageType.Request);
@@ -328,11 +323,6 @@ public class ServerSocketListener extends Thread {
         if (this.clientSocket != null) this.clientSocket.close();
         if (this.outputStream != null) this.outputStream.close();
         if (this.inputStream != null) this.inputStream.close();
-
-        // If there is an open connection existing while we disconnect, we need that stopped
-        if (this.udpListener != null) {
-            if (this.udpListener.isConnectionOpen()) this.udpListener.close();
-        }
 
         System.out.println("Connection was successfully closed.");
     }
