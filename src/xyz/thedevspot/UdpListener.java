@@ -8,12 +8,13 @@ import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
-public class UdpListener extends Thread{
+public class UdpListener extends Thread {
     private DatagramSocket udpSocket;
     private UserInformation receiver;
     private UserInformation sender;
     private boolean isSocketOpen;
     private boolean isAddressMapped;
+    private static Thread listenerThread;
 
     public UdpListener(int portNumber, UserInformation receiver, UserInformation sender) {
         try {
@@ -34,7 +35,7 @@ public class UdpListener extends Thread{
     public void startListening() {
         if (!this.isSocketOpen) return;
 
-        Thread listenerThread = this;
+        listenerThread = this;
         listenerThread.start();
     }
 
